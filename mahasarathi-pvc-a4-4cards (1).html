@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="mr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MahaSarathi PVC Card – A4 4-up</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:22px;background:#f2f4f7;color:#182230;font-family:Arial,"Noto Sans Devanagari",sans-serif}
+.panel{max-width:920px;margin:0 auto 18px;background:#fff;border:1px solid #d0d5dd;border-radius:12px;padding:20px}
+h1{font-size:22px;margin:0 0 8px}p{line-height:1.5;color:#475467;margin:8px 0 14px}
+.controls{display:flex;gap:12px;align-items:end;flex-wrap:wrap}label{display:grid;gap:5px;font-size:13px;font-weight:600}
+input[type=file]{max-width:100%;padding:9px;border:1px solid #d0d5dd;border-radius:7px;background:#fff}
+button{border:0;border-radius:8px;background:#155eef;color:#fff;font-weight:700;padding:11px 17px;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#475467}
+#status{font-size:13px;color:#344054;margin-top:12px}.note{font-size:12px;color:#667085}
+.preview{max-width:920px;margin:0 auto 24px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.preview section{background:#fff;padding:12px;border:1px solid #d0d5dd;border-radius:10px}
+.preview h2{font-size:15px;margin:0 0 8px}
+.preview img{width:100%;max-width:340px;display:block;margin:auto;border:1px dashed #98a2b3}
+.sheet{width:210mm;height:297mm;background:#fff;margin:0 auto 18px;padding:0;display:grid;grid-template-columns:85.6mm 85.6mm;grid-template-rows:54mm 54mm;column-gap:8mm;row-gap:8mm;justify-content:center;align-content:center;page-break-after:always;break-after:page}
+.card{width:85.6mm;height:54mm;overflow:hidden}.card img{width:100%;height:100%;display:block;object-fit:fill}
+.sheet-label{display:none}
+@page{size:A4 portrait;margin:0}
+@media print{
+ body{padding:0;margin:0;background:#fff}
+ .panel,.preview{display:none!important}
+ .sheet{margin:0;box-shadow:none}
+ .sheet:last-child{page-break-after:auto;break-after:auto}
+}
+@media(max-width:650px){.preview{grid-template-columns:1fr}.sheet{transform-origin:top left;}}
+</style>
+</head>
+<body>
+<div class="panel">
+ <h1>MahaSarathi PVC Card – A4 वर 4 कार्ड</h1>
+ <p>तुमची दिलेली MahaSarathi PDF निवडा. पोर्टल पहिल्या पानातून समोरील (Photo/Details) आणि मागील (QR Code) बाजू वेगळी काढेल. प्रिंटमध्ये 2 पाने तयार होतील: पहिले 4 Front, दुसरे 4 Back — duplex printing साठी.</p>
+ <div class="controls">
+  <label>मूळ MahaSarathi PDF निवडा
+   <input id="pdfFile" type="file" accept="application/pdf,.pdf">
+  </label>
+  <button id="printBtn" disabled>A4 प्रिंट करा</button>
+  <button id="resetBtn" class="secondary">रीसेट</button>
+ </div>
+ <div id="status">PDF अपलोड केल्यावर Front आणि Back preview दिसेल.</div>
+ <p class="note">प्रिंट सेटिंग: Paper A4, Scale 100% / Actual size, Margins None. दोन्ही बाजू प्रिंट करायच्या असल्यास “Print on both sides / Duplex” निवडा. Back side alignment साठी “Flip on long edge” वापरा. आधी एक test print तपासा.</p>
+</div>
+
+<div class="preview">
+ <section><h2>Front – फोटो व माहिती</h2><img id="frontPreview" alt="Front preview"></section>
+ <section><h2>Back – QR Code</h2><img id="backPreview" alt="Back preview"></section>
+</div>
+<div id="printArea"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(() => {
+ const input=document.getElementById('pdfFile'), status=document.getElementById('status');
+ const printBtn=document.getElementById('printBtn'), area=document.getElementById('printArea');
+ const frontPreview=document.getElementById('frontPreview'), backPreview=document.getElementById('backPreview');
+ let frontUrl=null, backUrl=null;
+ if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+ function crop(canvas, box){
+   const c=document.createElement('canvas');
+   const sx=Math.round(canvas.width*box.x), sy=Math.round(canvas.height*box.y);
+   const sw=Math.round(canvas.width*box.w), sh=Math.round(canvas.height*box.h);
+   c.width=sw; c.height=sh;
+   c.getContext('2d').drawImage(canvas,sx,sy,sw,sh,0,0,sw,sh);
+   return c.toDataURL('image/png');
+ }
+ function buildSheet(imageUrl, label){
+   const sheet=document.createElement('section'); sheet.className='sheet';
+   sheet.setAttribute('aria-label',label);
+   for(let i=0;i<4;i++){
+     const card=document.createElement('div'); card.className='card';
+     const img=document.createElement('img'); img.src=imageUrl; img.alt=label;
+     card.appendChild(img); sheet.appendChild(card);
+   }
+   return sheet;
+ }
+ input.addEventListener('change',async()=>{
+   const file=input.files&&input.files[0]; if(!file)return;
+   printBtn.disabled=true; status.textContent='PDF वाचत आहे...';
+   try{
+     if(!window.pdfjsLib) throw new Error('PDF renderer load झाला नाही. इंटरनेट कनेक्शन तपासा.');
+     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+     const page=await pdf.getPage(1);
+     const viewport=page.getViewport({scale:3});
+     const canvas=document.createElement('canvas'); canvas.width=Math.ceil(viewport.width); canvas.height=Math.ceil(viewport.height);
+     await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+
+     // This crop layout matches the uploaded one-page MahaSarathi card PDF:
+     // upper card = front; lower card = QR/back.
+     const front=crop(canvas,{x:0.045,y:0.019,w:0.503,h:0.249});
+     const back=crop(canvas,{x:0.045,y:0.305,w:0.503,h:0.249});
+     if(frontUrl)URL.revokeObjectURL(frontUrl); if(backUrl)URL.revokeObjectURL(backUrl);
+     frontUrl=front; backUrl=back;
+     frontPreview.src=front; backPreview.src=back;
+     area.replaceChildren(buildSheet(front,'Front'),buildSheet(back,'Back'));
+     printBtn.disabled=false;
+     status.textContent='तयार! 2 A4 पाने बनली आहेत — Page 1: 4 Front cards, Page 2: 4 Back/QR cards.';
+   }catch(err){status.textContent='त्रुटी: '+(err.message||err);}
+ });
+ printBtn.addEventListener('click',()=>{if(frontUrl&&backUrl)window.print();});
+ document.getElementById('resetBtn').addEventListener('click',()=>{
+   input.value=''; frontUrl=null; backUrl=null; frontPreview.removeAttribute('src'); backPreview.removeAttribute('src');
+   area.replaceChildren(); printBtn.disabled=true; status.textContent='रीसेट झाले. PDF पुन्हा निवडा.';
+ });
+})();
+</script>
+</body>
+</html>
